@@ -1,65 +1,106 @@
-import Image from "next/image";
+import { Header } from "@/components/Header";
+import { LocationCard } from "@/components/LocationCard";
+import { fetchAllLocations, withAccessFlags } from "@/lib/locations";
+import { getCurrentUser, getVisitorId, getOrCreateUser } from "@/lib/visitor";
+import { getWeatherMode, filterLocationsByWeather } from "@/lib/weather";
+import { hasActivePass } from "@/lib/access";
+import Link from "next/link";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  const zone = "chisinau";
+
+  let user = await getCurrentUser();
+  const visitorId = await getVisitorId();
+  if (!user && visitorId) {
+    user = await getOrCreateUser(visitorId);
+  }
+
+  const [locations, mode] = await Promise.all([
+    fetchAllLocations(zone),
+    getWeatherMode(zone),
+  ]);
+
+  const withAccess = withAccessFlags(locations, user);
+  const { outdoor, rainyDay } = filterLocationsByWeather(locations, mode);
+
+  const outdoorSlugs = new Set(outdoor.map((l) => l.slug));
+  const mainList =
+    mode === "rainy"
+      ? withAccess.filter((l) => outdoorSlugs.has(l.slug))
+      : withAccess;
+
+  const rainyList =
+    mode === "rainy" ? withAccessFlags(rainyDay, user) : [];
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <>
+      <Header hasPass={hasActivePass(user)} />
+      <main className="mx-auto max-w-lg px-4 pb-12 pt-6">
+        <section className="mb-8 text-center">
+          <p className="text-xs font-medium uppercase tracking-[0.25em] text-amber-500">
+            Republic of Moldova
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+          <h1 className="mt-2 font-serif text-3xl text-amber-50">
+            Your Premium Explorer
+          </h1>
+          <p className="mt-3 text-sm text-stone-400">
+            Scan at your hotel — 3 destinations free. Full access for 14 days with
+            one payment.
+          </p>
+        </section>
+
+        {mode === "rainy" && (
+          <section className="mb-6 rounded-2xl border border-sky-900/50 bg-sky-950/30 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-sky-400">
+              Weather alert
+            </p>
+            <p className="mt-1 text-sm text-stone-300">
+              Rain detected in {zone}. Outdoor parks are hidden — explore indoor
+              picks below.
+            </p>
+          </section>
+        )}
+
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium uppercase tracking-wider text-amber-600/80">
+            {mode === "rainy" ? "Available today" : "Destinations"}
+          </h2>
+          {mainList.map((loc) => (
+            <LocationCard key={loc.id} location={loc} />
+          ))}
+        </section>
+
+        {rainyList.length > 0 && (
+          <section className="mt-10 space-y-3">
+            <h2 className="font-serif text-xl text-amber-100">Zi Ploioasă</h2>
+            <p className="text-xs text-stone-500">
+              Wineries, museums & galleries — perfect for a rainy day.
+            </p>
+            {rainyList.map((loc) => (
+              <LocationCard key={`rainy-${loc.id}`} location={loc} />
+            ))}
+          </section>
+        )}
+
+        {!hasActivePass(user) && (
+          <section className="mt-10 rounded-2xl border border-amber-800/40 bg-gradient-to-b from-amber-950/40 to-stone-950 p-6 text-center">
+            <h2 className="font-serif text-xl text-amber-100">
+              14-Day Full Explorer Pass
+            </h2>
+            <p className="mt-2 text-sm text-stone-400">
+              One-time €5 — all destinations, taxi links & culinary guides.
+            </p>
+            <Link
+              href="/unlock"
+              className="mt-4 inline-block rounded-2xl bg-amber-500 px-8 py-3 font-semibold text-stone-950"
+            >
+              Unlock now
+            </Link>
+          </section>
+        )}
       </main>
-    </div>
+    </>
   );
 }
